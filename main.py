@@ -31,7 +31,7 @@ async def start(message: types.Message):
                                                  f"Этот бот предназначен для игры с друзьями. Доступные игры:\n"
                                                  f"  Крестики-нолики\n"
                                                  f"  Игра в слова\n"
-                                                 f"Для игры нужно зарегестрироваться по команде /register "
+                                                 f"Для игры нужно зарегистрироваться по команде /register "
                                                  f"и найти своего друга по команде /add.\n"
                                                  f"Вы можете просмотеть список друзей: /friends\n"
                                                  f"Во время игры вам доступна команда /отмена\n"
@@ -39,7 +39,7 @@ async def start(message: types.Message):
                                                  f"и удалять: /black_list", reply_markup=main_kb())
 
 
-@dp.message_handler(commands=["отменить"], state=[Add_friends.nickname, Reg.nickname])
+@dp.message_handler(commands=["отменить"], state=[Add_friends.nickname, Reg.nickname, Add_to_black_list.user])
 @dp.message_handler(Text(equals="отменить", ignore_case=True), state=[Add_friends.nickname, Reg.nickname])
 async def stop(message: types.Message, state: FSMContext):
     current_state = await state.get_state()
@@ -77,7 +77,7 @@ async def get_friends(message: types.Message):
         else:
             await bot.send_message(message.from_user.id, "У вас нет друзей")
     else:
-        await bot.send_message(message.from_user.id, "Вы не зарегестрированы")
+        await bot.send_message(message.from_user.id, "Вы не зарегистрированы")
 
 
 @dp.message_handler(commands=["black_list"], state=None)
@@ -91,7 +91,7 @@ async def show_black_list(message: types.Message):
             await msg.delete()
             await message.delete()
     else:
-        await bot.send_message(message.from_user.id, "Вы не зарегестрированы")
+        await bot.send_message(message.from_user.id, "Вы не зарегистрированы")
 
 
 @dp.callback_query_handler(Text(startswith="exclude"), state=None)
@@ -114,7 +114,7 @@ async def hide(callback: types.CallbackQuery):
 @dp.message_handler(commands=['register'], state=None)
 async def register(message: types.Message):
     if db.id_exists(message.from_user.id):
-        await bot.send_message(message.from_user.id, "Вы уже зарегестрированы")
+        await bot.send_message(message.from_user.id, "Вы уже зарегистрированы")
     else:
         await bot.send_message(message.from_user.id, "Введите ник", reply_markup=cancel_kb())
         await Reg.nickname.set()
@@ -136,7 +136,7 @@ async def user_id(message: types.Message):
         await bot.send_message(message.from_user.id, "Введите ник", reply_markup=cancel_kb())
         await Add_to_black_list.user.set()
     else:
-      await bot.send_message(message.from_user.id, "Вы не зарегестрированы")
+      await bot.send_message(message.from_user.id, "Вы не зарегистрированы")
 
 
 @dp.message_handler(state=Add_to_black_list.user)
@@ -161,7 +161,7 @@ async def add(message: types.Message):
         await bot.send_message(message.from_user.id, "Введите ник", reply_markup=cancel_kb())
         await Add_friends.nickname.set()
     else:
-        await bot.send_message(message.from_user.id, "Вы не зарегестрированы")
+        await bot.send_message(message.from_user.id, "Вы не зарегистрированы")
 
 
 @dp.message_handler(state=Add_friends.nickname)
@@ -257,7 +257,8 @@ async def cancel(callback: types.CallbackQuery, state: FSMContext):
             await callback.answer("Вызов отменен")
             await bot.delete_message(chat_id=callback.from_user.id, message_id=callback.message.message_id)
     except:
-        pass
+        db.edit_status(callback.from_user.id, "None")
+        await bot.delete_message(chat_id=callback.from_user.id, message_id=callback.message.message_id)
 
 
 @dp.callback_query_handler(Text(startswith="tic_response"), state=None)
@@ -281,6 +282,9 @@ async def rsp(callback: types.CallbackQuery, state: FSMContext):
             await bot.delete_message(chat_id=callback.from_user.id, message_id=callback.message.message_id)
             async with state.proxy() as data:
                 data["game"] = str([callback.data.split('-')[1]])
+    else:
+        await bot.delete_message(chat_id=callback.from_user.id, message_id=callback.message.message_id)
+        await callback.answer("Вызов откланен")
 
 
 @dp.callback_query_handler(Text(startswith="tic_game"), state=Tic_tac_toe.game)
@@ -368,6 +372,9 @@ async def rsp(callback: types.CallbackQuery, state: FSMContext):
             await bot.delete_message(chat_id=callback.from_user.id, message_id=callback.message.message_id)
             async with state.proxy() as data:
                 data["game"] = str([callback.data.split('-')[2]][0])
+    else:
+        await bot.delete_message(chat_id=callback.from_user.id, message_id=callback.message.message_id)
+        await callback.answer("Вызов откланен")
 
 
 @dp.message_handler(state=Word_game.game)
@@ -379,7 +386,7 @@ async def word_game(message: types.Message, state: FSMContext):
     id1 = list["players"][0]
     id2 = list["players"][1]
     if list["players"][move] == message.from_user.id:
-        if len(message.text) == 5 and message.text.lower() in words:
+        if len(message.text) == 5:
             if message.text.lower() != list["word"]:
                 print(list["word"])
                 tic_tac_toe[id]["move"] = (move + 1) % 2
@@ -403,8 +410,13 @@ async def word_game(message: types.Message, state: FSMContext):
     await message.delete()
 
 
+@dp.message_handler()
+async def msg(message: types.Message):
+    await message.delete()
+
+
 async def delete_game(game_id, list):
-    await asyncio.sleep(10)
+    await asyncio.sleep(30)
     try:
         game = tic_tac_toe[game_id]
         if id(game) == id(list):
